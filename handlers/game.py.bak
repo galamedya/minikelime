@@ -1,0 +1,79 @@
+from pyrogram import Client, filters
+from random import choice
+import os
+import re
+from utils.language import translate
+
+app = Client("telegram_bot")
+
+# Word list from the file
+with open("kelimeler.txt", "r") as file:
+    word_list = [word.strip() for word in file.readlines()]
+
+def pick_word():
+    word = choice(word_list)
+    return word.upper()
+
+def create_masked_word(word, revealed):
+    masked = ""
+    for i, letter in enumerate(word):
+        if i in revealed:
+            masked += letter
+        else:
+            masked += "_"
+    return masked
+
+# Game state
+games = {}
+
+@app.on_message(filters.command(["yenioyun"]))
+def new_game(client, message):
+    chat_id = message.chat.id
+    games[chat_id] = {
+        "word": pick_word(),
+        "revealed": set(),
+        "guesses": 0
+    }
+    response = translate("new_game") + "\n\n" + create_masked_word(games[chat_id]["word"], games[chat_id]["revealed"])
+    message.reply_text(response)
+
+@app.on_message(filters.command(["ipucu"]))
+def hint(client, message):
+    chat_id = message.chat.id
+    if chat_id not in games:
+        message.reply_text(translate("no_game"))
+        return
+
+    word = games[chat_id]["word"]
+    revealed = games[chat_id]["revealed"]
+
+    if len(revealed) >= len(word):
+        message.reply_text(translate("all_revealed"))
+        return
+
+    while True:
+        index = choice(range(len(word)))
+        if index not in revealed:
+            revealed.add(index)
+            break
+
+    response = translate("hint") + "\n\n" + create_masked_word(word, revealed)
+    message.reply_text(response)
+
+@app.on_message(filters.text & ~filters.command(["yenioyun", "ipucu"]))
+def guess(client, message):
+    chat_id = message.chat.id
+    if chat_id not in games:
+        message.reply_text(translate("no_game"))
+        return
+
+    word = games[chat_id]["word"]
+    revealed = games[chat_id]["revealed"]
+
+    guessed_word = message.text.strip().upper()
+    if guessed_word == word:
+        games.pop(chat_id)
+        response = translate("correct_guess").format(word)
+        message.reply_text(response)
+    else:
+        message.reply_text(translate("incorrect_guess"))
